@@ -7,7 +7,9 @@
 // Exit 0 when every case agrees, 1 otherwise.
 //
 // Coverage: every string of length 0..6 over {a, comma, quote, CR, LF} in both
-// header modes, the hand-built edge list, and two seeded fuzzers.
+// header modes, the hand-built edge list, two seeded fuzzers, and the full
+// code-unit sweep below (every UTF-16 code unit 0..65535 embedded in an
+// unquoted field and at a field start, in both header modes).
 
 import { run as mine } from './solve.js';
 
@@ -256,6 +258,32 @@ function exhaustive() {
   }
 }
 exhaustive();
+
+// --- code-unit sweep: every UTF-16 code unit 0..65535, embedded in an unquoted
+// field (mid-field, first and second field) and at a field start, and inside a
+// quoted field (plain, next to CRs and LFs), x 2 header modes. This is the
+// guard for the 65536-entry UCLASS table and for the readQuoted scan: a wrong
+// class for any high character (e.g. U+2028, U+2029, U+FEFF, or a lone
+// surrogate 0xD800-0xDFFF) would show up here as a mismatch against the
+// oracle, where the exhaustive alphabet above cannot see it. ---
+function codeUnitSweep() {
+  for (let cu = 0; cu <= 0xffff; cu++) {
+    const ch = String.fromCharCode(cu);
+    const shapes = [
+      `x${ch}y,z\n`,
+      `${ch}y,z\n`,
+      `x,${ch}y\n`,
+      `"a${ch}b",c\n`,
+      `"a${ch}\r${ch}b",c\n`,
+      `"a${ch}\n${ch}b",c\n`,
+    ];
+    for (const s of shapes) {
+      check({ text: s, header: true }, `sweep#${cu}:${JSON.stringify(s)}:h`);
+      check({ text: s, header: false }, `sweep#${cu}:${JSON.stringify(s)}:n`);
+    }
+  }
+}
+codeUnitSweep();
 
 // --- hand-written edge cases ---
 const T = (text, header) => ({ text, header });

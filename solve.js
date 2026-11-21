@@ -160,14 +160,21 @@ export function run(input) {
   }
 
   // Reads a quoted field whose opening quote is at pos. Sets fEnded.
+  // Fast scan: jump with native indexOf to the next quote, then work only on
+  // the slice up to it — every later scan (for CR, for LF) is bounded to that
+  // short slice, never to the rest of the text. The common clean field then
+  // costs a few native scans instead of one JS step per character. A CR inside
+  // the slice is folded to one LF exactly as the old per-character loop did.
+  // (seg is always i at the top of the loop: both move together after every
+  // doubled quote and every folded CR.)
   function readQuoted() {
     const open = pos;
     const openLine = line;
     let i = pos + 1;
-    let seg = i; // the start of the clean run not yet taken
     let parts = null; // slices and replacements, once a doubled quote or a CR is met
     for (;;) {
-      if (i >= n) {
+      const q = text.indexOf('"', i);
+      if (q === -1) {
         // The quote never closes: it is a literal character, and the text after it is read again
         // as unquoted.
         pos = open + 1;
@@ -175,66 +182,72 @@ export function run(input) {
         errors.push({ code: 'unterminated_quote', line: recordLine, row: recordRow });
         return readUnquoted('"');
       }
-      const c = text.charCodeAt(i);
-      if (c === 34) {
-        // '"'
-        if (text.charCodeAt(i + 1) === 34) {
-          if (parts === null) parts = [];
-          parts.push(text.slice(seg, i));
-          parts.push('"');
-          i += 2;
-          seg = i;
-          continue;
-        }
-        // The closing quote.
-        let value;
-        if (parts === null) {
-          value = text.slice(seg, i);
-        } else {
-          parts.push(text.slice(seg, i));
-          value = parts.join('');
-        }
-        pos = i + 1;
-        if (pos >= n) {
-          fEnded = END;
-          return value;
-        }
-        const d = text.charCodeAt(pos);
-        if (d === 44) {
-          pos += 1;
-          fEnded = COMMA;
-          return value;
-        }
-        if (d === 10) {
-          pos += 1;
+      const span = text.slice(i, q);
+      const r = span.indexOf('\r');
+      if (r !== -1) {
+        // A CR sits before the next quote: count the LFs before it, fold it to one LF.
+        let p = span.indexOf('\n');
+        while (p !== -1 && p < r) {
           line += 1;
-          fEnded = BREAK;
-          return value;
+          p = span.indexOf('\n', p + 1);
         }
-        if (d === 13 && text.charCodeAt(pos + 1) === 10) {
-          pos += 2;
-          line += 1;
-          fEnded = BREAK;
-          return value;
-        }
-        // What follows the closing quote is appended as it stands, up to the next comma or line
-        // break.
-        const junk = readUnquoted(value);
-        if (fAdded > 0) errors.push({ code: 'quote_junk', line: recordLine, row: recordRow });
-        return junk;
-      }
-      if (c === 13) {
-        // CRLF and a lone CR inside quotes are each one LF.
         if (parts === null) parts = [];
-        parts.push(text.slice(seg, i));
+        parts.push(span.slice(0, r));
         parts.push('\n');
         line += 1;
-        i += text.charCodeAt(i + 1) === 10 ? 2 : 1;
-        seg = i;
+        i += r + (text.charCodeAt(i + r + 1) === 10 ? 2 : 1);
         continue;
       }
-      if (c === 10) line += 1; // an LF inside quotes is kept as it stands and counts one line
-      i += 1;
+      // No CR before the next quote: count the LFs in the span.
+      let p = span.indexOf('\n');
+      while (p !== -1) {
+        line += 1;
+        p = span.indexOf('\n', p + 1);
+      }
+      if (text.charCodeAt(q + 1) === 34) {
+        // A doubled quote: one literal quote, keep scanning.
+        if (parts === null) parts = [];
+        parts.push(span);
+        parts.push('"');
+        i = q + 2;
+        continue;
+      }
+      // The closing quote.
+      let value;
+      if (parts === null) {
+        value = span;
+      } else {
+        parts.push(span);
+        value = parts.join('');
+      }
+      pos = q + 1;
+      if (pos >= n) {
+        fEnded = END;
+        return value;
+      }
+      const d = text.charCodeAt(pos);
+      if (d === 44) {
+        pos += 1;
+        fEnded = COMMA;
+        return value;
+      }
+      if (d === 10) {
+        pos += 1;
+        line += 1;
+        fEnded = BREAK;
+        return value;
+      }
+      if (d === 13 && text.charCodeAt(pos + 1) === 10) {
+        pos += 2;
+        line += 1;
+        fEnded = BREAK;
+        return value;
+      }
+      // What follows the closing quote is appended as it stands, up to the next comma or line
+      // break.
+      const junk = readUnquoted(value);
+      if (fAdded > 0) errors.push({ code: 'quote_junk', line: recordLine, row: recordRow });
+      return junk;
     }
   }
 
@@ -269,9 +282,10 @@ export function run(input) {
         // unquotedTail; change all three together.
         const seg = pos;
         let i = pos;
+        let cls = 0; // the UCLASS value at i: 0 plain, 1 comma, 2 LF, 3 CR
         while (i < n) {
-          const cc = text.charCodeAt(i);
-          if (UCLASS[cc] !== 0) break;
+          cls = UCLASS[text.charCodeAt(i)];
+          if (cls !== 0) break;
           i += 1;
         }
         if (i >= n) {
@@ -279,12 +293,11 @@ export function run(input) {
           fEnded = END;
           fields.push(text.slice(seg, i));
         } else {
-          const c = text.charCodeAt(i);
-          if (c === 44) {
+          if (cls === 1) {
             pos = i + 1;
             fEnded = COMMA;
             fields.push(text.slice(seg, i));
-          } else if (c === 10) {
+          } else if (cls === 2) {
             pos = i + 1;
             line += 1;
             fEnded = BREAK;
