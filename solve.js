@@ -261,23 +261,27 @@ export function run(input) {
       // lives inline in the record loop, in readUnquoted, and in unquotedTail; change all
       // four together.
       const c0 = text.charCodeAt(pos);
-      if (c0 === 34) {
+      switch (c0) {
+      case 34:
         quoted = true;
         fields.push(readQuoted());
-      } else if (c0 === 44) {
+        break;
+      case 44:
         // Empty field ending at a comma: the hot loop would stop at once here.
         quoted = false;
         pos += 1;
         fEnded = COMMA;
         fields.push('');
-      } else if (c0 === 10) {
+        break;
+      case 10:
         // Empty field ending at a line break.
         quoted = false;
         pos += 1;
         line += 1;
         fEnded = BREAK;
         fields.push('');
-      } else if (c0 === 13) {
+        break;
+      case 13:
         // Empty field at a CR: CRLF ends it, a lone CR drops and the tail reads on.
         quoted = false;
         if (text.charCodeAt(pos + 1) === 10) {
@@ -288,7 +292,8 @@ export function run(input) {
         } else {
           fields.push(unquotedTail('', null, pos, pos, 0));
         }
-      } else {
+        break;
+      default: {
         quoted = false;
         // The hot path, inline: a clean unquoted run to the next comma or line break.
         // Copy 1 of 4 of the unquoted-field scan — the same rule lives in readUnquoted,
@@ -324,6 +329,7 @@ export function run(input) {
             fields.push(unquotedTail('', null, seg, i, 0));
           }
         }
+      }
       }
     } while (fEnded === COMMA);
 
