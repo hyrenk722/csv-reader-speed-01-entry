@@ -27,7 +27,8 @@ const BREAK = 1;
 const END = 2;
 
 // Class of a character inside an unquoted field: 0 plain, 1 comma, 2 LF, 3 CR.
-const UCLASS = new Uint8Array(128);
+// Sized 65536 so every charCodeAt value indexes it directly, with no range guard.
+const UCLASS = new Uint8Array(65536);
 UCLASS[44] = 1;
 UCLASS[10] = 2;
 UCLASS[13] = 3;
@@ -58,6 +59,8 @@ export function run(input) {
   // the clean run before it, parts the slices already taken (or null), value the prefix the field
   // already holds, added the characters kept so far. Drops the CR (stray_cr) and reads on, one
   // clean run at a time, to the field's end. Sets fEnded and fAdded.
+  // Copy 3 of 3 of the unquoted-field scan — the same rule lives inline in the record loop and
+  // in readUnquoted; change all three together.
   function unquotedTail(value, parts, seg, i, added) {
     for (;;) {
       errors.push({ code: 'stray_cr', line: recordLine, row: recordRow });
@@ -116,6 +119,8 @@ export function run(input) {
   // Reads unquoted characters onto `value` up to the next comma or line break: a CR not followed
   // by LF is dropped (stray_cr, by unquotedTail). Sets fEnded and fAdded (the characters this read
   // itself kept).
+  // Copy 2 of 3 of the unquoted-field scan — the same rule lives inline in the record loop and
+  // in unquotedTail; change all three together.
   function readUnquoted(value) {
     const seg = pos;
     let i = pos;
@@ -260,11 +265,13 @@ export function run(input) {
       } else {
         quoted = false;
         // The hot path, inline: a clean unquoted run to the next comma or line break.
+        // Copy 1 of 3 of the unquoted-field scan — the same rule lives in readUnquoted and
+        // unquotedTail; change all three together.
         const seg = pos;
         let i = pos;
         while (i < n) {
           const cc = text.charCodeAt(i);
-          if (cc < 128 ? UCLASS[cc] !== 0 : false) break;
+          if (UCLASS[cc] !== 0) break;
           i += 1;
         }
         if (i >= n) {

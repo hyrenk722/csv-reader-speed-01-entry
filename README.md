@@ -20,4 +20,9 @@ than csv-reader 1.0.0 on the practice set.
 - `main.ts` — the driver the harness runs: reads `/input/cases.json`, answers each case with
   `run`, writes `/output/answers.json`.
 - `solve.js` — the parser (dependency-free ES module).
+- `difftest.mjs` — self-contained differential test: the reference reader (csv-reader 1.0.0)
+  copied in, compared against `solve.js` on every short string over `{a, ,, ", CR, LF}` up
+  to length 6 in both header modes, a hand-built edge list, and two seeded fuzzers.
+  Run with `node difftest.mjs`; exit 0 means every case agrees. Run it after any edit to
+  `solve.js` — the kit's 6 practice cases alone do not isolate every broken-row shape.
 - License: MIT (see `LICENSE`).
