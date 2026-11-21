@@ -272,9 +272,34 @@ export function run(input) {
     const fields = [];
     let quoted = false;
     do {
-      if (text.charCodeAt(pos) === 34) {
+      const c0 = text.charCodeAt(pos);
+      if (c0 === 34) {
         quoted = true;
         fields.push(readQuoted());
+      } else if (c0 === 44) {
+        // Empty field ending at a comma: the hot loop would stop at once here.
+        quoted = false;
+        pos += 1;
+        fEnded = COMMA;
+        fields.push('');
+      } else if (c0 === 10) {
+        // Empty field ending at a line break.
+        quoted = false;
+        pos += 1;
+        line += 1;
+        fEnded = BREAK;
+        fields.push('');
+      } else if (c0 === 13) {
+        // Empty field at a CR: CRLF ends it, a lone CR drops and the tail reads on.
+        quoted = false;
+        if (text.charCodeAt(pos + 1) === 10) {
+          pos += 2;
+          line += 1;
+          fEnded = BREAK;
+          fields.push('');
+        } else {
+          fields.push(unquotedTail('', null, pos, pos, 0));
+        }
       } else {
         quoted = false;
         // The hot path, inline: a clean unquoted run to the next comma or line break.
