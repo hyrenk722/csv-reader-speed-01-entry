@@ -246,19 +246,10 @@ export function run(input) {
   }
 
   for (;;) {
-    // Lines with no characters are no records.
-    while (pos < n) {
-      const c = text.charCodeAt(pos);
-      if (c === 10) {
-        pos += 1;
-        line += 1;
-      } else if (c === 13 && text.charCodeAt(pos + 1) === 10) {
-        pos += 2;
-        line += 1;
-      } else {
-        break;
-      }
-    }
+    // Lines with no characters are no records: a blank line reads as one empty
+    // unquoted field and is dropped by the single-empty-field check below, so
+    // no separate skip loop runs here (one charCodeAt + two compares saved per
+    // record).
     if (pos >= n) break;
 
     recordLine = line;
