@@ -26,13 +26,6 @@ const COMMA = 0;
 const BREAK = 1;
 const END = 2;
 
-// Class of a character inside an unquoted field: 0 plain, 1 comma, 2 LF, 3 CR.
-// Sized 65536 so every charCodeAt value indexes it directly, with no range guard.
-const UCLASS = new Uint8Array(65536);
-UCLASS[44] = 1;
-UCLASS[10] = 2;
-UCLASS[13] = 3;
-
 /** csv-reader 1.0.0's answer for one case's input. */
 export function run(input) {
   const text = String(input.text);
@@ -300,10 +293,10 @@ export function run(input) {
         // unquotedTail, and the empty-field fast path above; change all four together.
         const seg = pos;
         let i = pos;
-        let cls = 0; // the UCLASS value at i: 0 plain, 1 comma, 2 LF, 3 CR
+        let c = 0; // charCode at i: 44 comma, 10 LF, 13 CR, else plain
         while (i < n) {
-          cls = UCLASS[text.charCodeAt(i)];
-          if (cls !== 0) break;
+          c = text.charCodeAt(i);
+          if (c === 44 || c === 10 || c === 13) break;
           i += 1;
         }
         if (i >= n) {
@@ -311,11 +304,11 @@ export function run(input) {
           fEnded = END;
           fields.push(text.slice(seg, i));
         } else {
-          if (cls === 1) {
+          if (c === 44) {
             pos = i + 1;
             fEnded = COMMA;
             fields.push(text.slice(seg, i));
-          } else if (cls === 2) {
+          } else if (c === 10) {
             pos = i + 1;
             line += 1;
             fEnded = BREAK;
