@@ -24,12 +24,18 @@ const OUTPUT_DIR = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
 /** Write the whole string at the current file position, looping over short writes. */
 function writeAll(fd: number, s: string): void {
-  const buf = Buffer.from(s, 'utf8');
-  let off = 0;
-  while (off < buf.length) {
-    const n = writeSync(fd, buf, off, buf.length - off);
-    if (n <= 0) throw new Error('short write to answers.json');
-    off += n;
+  // Whole-string write: no per-case Buffer alloc+copy (6 cases x ~2 MB each).
+  // Regular files write fully in practice; on a short write finish the rest
+  // through a buffer (same UTF-8 bytes, byte offset n).
+  const n = writeSync(fd, s);
+  if (n < Buffer.byteLength(s)) {
+    const buf = Buffer.from(s, 'utf8');
+    let off = n;
+    while (off < buf.length) {
+      const m = writeSync(fd, buf, off, buf.length - off);
+      if (m <= 0) throw new Error('short write to answers.json');
+      off += m;
+    }
   }
 }
 
