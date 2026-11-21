@@ -171,7 +171,7 @@ export function run(input) {
     const open = pos;
     const openLine = line;
     let i = pos + 1;
-    let parts = null; // slices and replacements, once a doubled quote or a CR is met
+    let acc = null; // accumulated string, once a doubled quote or a CR is met (concat, no array+join)
     for (;;) {
       const q = text.indexOf('"', i);
       if (q === -1) {
@@ -191,9 +191,9 @@ export function run(input) {
           line += 1;
           p = span.indexOf('\n', p + 1);
         }
-        if (parts === null) parts = [];
-        parts.push(span.slice(0, r));
-        parts.push('\n');
+        if (acc === null) acc = '';
+        acc += span.slice(0, r);
+        acc += '\n';
         line += 1;
         i += r + (text.charCodeAt(i + r + 1) === 10 ? 2 : 1);
         continue;
@@ -206,20 +206,14 @@ export function run(input) {
       }
       if (text.charCodeAt(q + 1) === 34) {
         // A doubled quote: one literal quote, keep scanning.
-        if (parts === null) parts = [];
-        parts.push(span);
-        parts.push('"');
+        if (acc === null) acc = '';
+        acc += span;
+        acc += '"';
         i = q + 2;
         continue;
       }
       // The closing quote.
-      let value;
-      if (parts === null) {
-        value = span;
-      } else {
-        parts.push(span);
-        value = parts.join('');
-      }
+      const value = acc === null ? span : acc + span;
       pos = q + 1;
       if (pos >= n) {
         fEnded = END;
