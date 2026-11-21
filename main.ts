@@ -15,6 +15,12 @@ import { setFlagsFromString } from 'node:v8';
 // V8's incremental marking off, set before solve.js is imported so all of its work runs under it
 // (the house baseline runs with --no-incremental-marking, and an entry may tune V8's flags too).
 setFlagsFromString('--no-incremental-marking');
+// TurboFan off too, set the same way and before the import: on a single cold pass over 6 fresh
+// cases TurboFan's compile + deopt/reopt churn (run()/readQuoted deopt on "wrong map" /
+// "wrong call target" as each differently-shaped case flows through) costs ~130ms of user CPU,
+// more than Maglev-only execution loses. Output is byte-identical either way (verified).
+// Separate call so the marking flag above still applies even if this one ever went away.
+setFlagsFromString('--no-turbofan');
 
 /** solve.js, imported by its URL (a .js module carries no types) and typed by its contract. */
 const { run } = (await import(new URL('./solve.js', import.meta.url).href)) as { run: (input: unknown) => unknown };
