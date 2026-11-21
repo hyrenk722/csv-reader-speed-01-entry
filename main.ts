@@ -2,8 +2,13 @@
 // JSON array of {id, input}), answers each one alone with run() from solve.js, and writes
 // /output/answers.json: a JSON array of the answers, one per case and in the cases' order.
 // Outside a container MAKEFUN_INPUT_DIR and MAKEFUN_OUTPUT_DIR stand in for /input and /output.
-
-import { readFileSync, writeFileSync } from 'node:fs';
+//
+// Answers are written one case at a time instead of stringifying the whole array at once: the
+// full answers graph plus its 12 MB JSON string kept alive together cost repeated full GCs under
+// --no-incremental-marking, and each case's answer and input are dropped as soon as they are
+// written, so the live set stays one case small. The bytes written are identical to
+// JSON.stringify of the whole array: '[' + per-case JSON + ',' ... + ']'.
+import { readFileSync, openSync, writeSync, closeSync } from 'node:fs';
 import { join } from 'node:path';
 import { setFlagsFromString } from 'node:v8';
 
@@ -17,7 +22,28 @@ const { run } = (await import(new URL('./solve.js', import.meta.url).href)) as {
 const INPUT_DIR = process.env.MAKEFUN_INPUT_DIR ?? '/input';
 const OUTPUT_DIR = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
-const cases = JSON.parse(readFileSync(join(INPUT_DIR, 'cases.json'), 'utf8')) as { id: string; input: unknown }[];
-const answers: unknown[] = [];
-for (const c of cases) answers.push(run(c.input));
-writeFileSync(join(OUTPUT_DIR, 'answers.json'), JSON.stringify(answers));
+/** Write the whole string at the current file position, looping over short writes. */
+function writeAll(fd: number, s: string): void {
+  const buf = Buffer.from(s, 'utf8');
+  let off = 0;
+  while (off < buf.length) {
+    const n = writeSync(fd, buf, off, buf.length - off);
+    if (n <= 0) throw new Error('short write to answers.json');
+    off += n;
+  }
+}
+
+const cases: ({ id: string; input: unknown } | null)[] = JSON.parse(readFileSync(join(INPUT_DIR, 'cases.json'), 'utf8'));
+const fd = openSync(join(OUTPUT_DIR, 'answers.json'), 'w');
+try {
+  writeAll(fd, '[');
+  for (let i = 0; i < cases.length; i++) {
+    const answer = run(cases[i]!.input);
+    cases[i] = null;
+    if (i) writeAll(fd, ',');
+    writeAll(fd, JSON.stringify(answer) as string);
+  }
+  writeAll(fd, ']');
+} finally {
+  closeSync(fd);
+}
