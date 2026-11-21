@@ -59,8 +59,8 @@ export function run(input) {
   // the clean run before it, parts the slices already taken (or null), value the prefix the field
   // already holds, added the characters kept so far. Drops the CR (stray_cr) and reads on, one
   // clean run at a time, to the field's end. Sets fEnded and fAdded.
-  // Copy 3 of 3 of the unquoted-field scan — the same rule lives inline in the record loop and
-  // in readUnquoted; change all three together.
+  // Copy 3 of 4 of the unquoted-field scan — the same rule lives inline in the record loop,
+  // in readUnquoted, and in the empty-field fast path; change all four together.
   function unquotedTail(value, parts, seg, i, added) {
     for (;;) {
       errors.push({ code: 'stray_cr', line: recordLine, row: recordRow });
@@ -119,8 +119,8 @@ export function run(input) {
   // Reads unquoted characters onto `value` up to the next comma or line break: a CR not followed
   // by LF is dropped (stray_cr, by unquotedTail). Sets fEnded and fAdded (the characters this read
   // itself kept).
-  // Copy 2 of 3 of the unquoted-field scan — the same rule lives inline in the record loop and
-  // in unquotedTail; change all three together.
+  // Copy 2 of 4 of the unquoted-field scan — the same rule lives inline in the record loop,
+  // in unquotedTail, and in the empty-field fast path; change all four together.
   function readUnquoted(value) {
     const seg = pos;
     let i = pos;
@@ -272,6 +272,9 @@ export function run(input) {
     const fields = [];
     let quoted = false;
     do {
+      // Copy 4 of 4 of the unquoted-field scan: the empty-field cases of the same rule that
+      // lives inline in the record loop, in readUnquoted, and in unquotedTail; change all
+      // four together.
       const c0 = text.charCodeAt(pos);
       if (c0 === 34) {
         quoted = true;
@@ -303,8 +306,8 @@ export function run(input) {
       } else {
         quoted = false;
         // The hot path, inline: a clean unquoted run to the next comma or line break.
-        // Copy 1 of 3 of the unquoted-field scan — the same rule lives in readUnquoted and
-        // unquotedTail; change all three together.
+        // Copy 1 of 4 of the unquoted-field scan — the same rule lives in readUnquoted,
+        // unquotedTail, and the empty-field fast path above; change all four together.
         const seg = pos;
         let i = pos;
         let cls = 0; // the UCLASS value at i: 0 plain, 1 comma, 2 LF, 3 CR
