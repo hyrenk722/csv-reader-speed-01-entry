@@ -29,19 +29,31 @@ const INPUT_DIR = process.env.MAKEFUN_INPUT_DIR ?? '/input';
 const OUTPUT_DIR = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
 /** Write the whole string at the current file position, looping over short writes. */
+const writeBuf = Buffer.allocUnsafe(16 * 1024 * 1024);
 function writeAll(fd: number, s: string): void {
-  // Whole-string write: no per-case Buffer alloc+copy (6 cases x ~2 MB each).
-  // Regular files write fully in practice; on a short write finish the rest
-  // through a buffer (same UTF-8 bytes, byte offset n).
-  const n = writeSync(fd, s);
-  if (n < Buffer.byteLength(s)) {
-    const buf = Buffer.from(s, 'utf8');
-    let off = n;
-    while (off < buf.length) {
-      const m = writeSync(fd, buf, off, buf.length - off);
-      if (m <= 0) throw new Error('short write to answers.json');
-      off += m;
+  // Encode once, into a reused buffer: no per-case Buffer alloc+copy and no
+  // separate Buffer.byteLength scan per case (~4ms per ~2MB case). buf.write
+  // returns the byte count, so short writes are finished from the same buffer.
+  // A case over 16MB (never: cases are ~2MB) falls back to the string path.
+  const n = writeBuf.write(s, 0, 'utf8');
+  if (n === writeBuf.length) {
+    const m = writeSync(fd, s);
+    if (m < Buffer.byteLength(s)) {
+      const buf = Buffer.from(s, 'utf8');
+      let off = m;
+      while (off < buf.length) {
+        const k = writeSync(fd, buf, off, buf.length - off);
+        if (k <= 0) throw new Error('short write to answers.json');
+        off += k;
+      }
     }
+    return;
+  }
+  let off = 0;
+  while (off < n) {
+    const m = writeSync(fd, writeBuf, off, n - off);
+    if (m <= 0) throw new Error('short write to answers.json');
+    off += m;
   }
 }
 
