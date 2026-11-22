@@ -35,8 +35,11 @@ function writeAll(fd: number, s: string): void {
   // separate Buffer.byteLength scan per case (~4ms per ~2MB case). buf.write
   // returns the byte count, so short writes are finished from the same buffer.
   // A case over 16MB (never: cases are ~2MB) falls back to the string path.
+  // Edge guard: Buffer.write never splits a multi-byte character (at most 4
+  // bytes), so a truncated write can only hide within 3 bytes of a full
+  // buffer — only then pay for the byteLength scan to tell fit from cut-off.
   const n = writeBuf.write(s, 0, 'utf8');
-  if (n === writeBuf.length) {
+  if (n >= writeBuf.length - 3 && n < Buffer.byteLength(s)) {
     const m = writeSync(fd, s);
     if (m < Buffer.byteLength(s)) {
       const buf = Buffer.from(s, 'utf8');
